@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+:root {
+  /* Atmosphere / Canvas Layer 0 - Premium SaaS Light Palette */
+  --bg-space: #F8FAFC;
+  --bg-deep: #F1F5F9;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-hover: #F8FAFC;
+
+  /* SaaS Brand Accent Palette */
+  --accent-blue: #2563EB;
+  --accent-blue-bright: #3B82F6;
+  --accent-blue-glow: rgba(37, 99, 235, 0.12);
+  --accent-cyan: #0284C7;
+  --accent-cyan-glow: rgba(2, 132, 199, 0.12);
+  --accent-indigo: #4F46E5;
+  
+  /* AI Intelligence Accent */
+  --ai-purple: #7C3AED;
+  --ai-purple-bright: #8B5CF6;
+  --ai-purple-glow: rgba(124, 58, 237, 0.12);
+  
+  /* Semantic Status Tokens */
+  --status-success: #059669;
+  --status-warning: #D97706;
+  --status-critical: #DC2626;
+  --status-neutral: #64748B;
+
+  /* Typography & Contrast */
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  --text-dim: #94A3B8;
+
+  /* Glass & Border System */
+  --border-subtle: #E2E8F0;
+  --border-medium: #CBD5E1;
+  --border-accent: rgba(37, 99, 235, 0.25);
+  --border-glass: rgba(255, 255, 255, 0.8);
+
+  /* Animation Easings */
+  --ease-spring: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --color-space: var(--bg-space);
+  --color-deep: var(--bg-deep);
+  --color-card: var(--bg-card);
+  --color-elevated: var(--bg-elevated);
+  --color-surface: var(--bg-surface);
+  --color-surface-hover: var(--bg-hover);
+
+  --color-brand-blue: var(--accent-blue);
+  --color-brand-cyan: var(--accent-cyan);
+  --color-brand-purple: var(--ai-purple);
+
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Outfit", "Inter", "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+body {
+  background-color: var(--bg-space);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Subtle Tactile Grain Texture Overlay for Light Mode */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 99;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Layer 0 Ambient Radial Mesh for Ultra-Luxury Finish */
+.ambient-mesh {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  background: 
+    radial-gradient(ellipse 65% 45% at 50% -10%, rgba(37, 99, 235, 0.06), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 90% 15%, rgba(124, 58, 237, 0.04), transparent 60%),
+    radial-gradient(ellipse 40% 30% at 10% 85%, rgba(2, 132, 199, 0.04), transparent 60%);
+}
+
+/* Glassmorphism Panel Utilities with Apple-style Light Catching Highlights */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 1);
+  box-shadow: 
+    0 1px 2px rgba(15, 23, 42, 0.02),
+    0 4px 20px -2px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.glass-panel-elevated {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid #CBD5E1;
+  border-top: 1px solid rgba(255, 255, 255, 1);
+  box-shadow: 
+    0 12px 36px -4px rgba(15, 23, 42, 0.08), 
+    0 2px 6px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.glass-dropdown {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid #CBD5E1;
+  border-top: 1px solid rgba(255, 255, 255, 1);
+  box-shadow: 
+    0 20px 45px -10px rgba(15, 23, 42, 0.12), 
+    0 4px 12px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* Apple-style Tactile Press & Touch Ergonomics */
+.tap-press {
+  touch-action: manipulation;
+  transition: transform 120ms cubic-bezier(0.2, 0, 0, 1), box-shadow 120ms ease;
+}
+.tap-press:active {
+  transform: scale(0.972);
+}
+
+/* Keyboard Accessibility Focus Rings */
+:focus-visible {
+  outline: 2px solid #2563EB !important;
+  outline-offset: 2px !important;
+}
+
+/* Micro-Typography Classes */
+.type-display {
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.type-heading {
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.type-micro {
+  font-size: 0.6875rem; /* 11px */
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+}
+
+/* Custom Scrollbar for Light Mode */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Pulse animation for live indicators */
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.96);
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Accessibility: Reduced Motion (Apple Design Principle) */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-glow-pulse, .animate-spin {
+    animation: none !important;
+  }
+  .noise-overlay {
+    display: none !important;
+  }
+  .tap-press:active {
+    transform: none !important;
+  }
+}
+
+/* Accessibility: Reduced Transparency */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel, .glass-panel-elevated, .glass-dropdown {
+    background: #FFFFFF !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #CBD5E1 !important;
+  }
+}
+
+/* Accessibility: High Contrast */
+@media (prefers-contrast: more) {
+  :root {
+    --border-subtle: #94A3B8;
+    --border-medium: #64748B;
+    --text-muted: #334155;
+  }
+  .glass-panel, .glass-panel-elevated {
+    border: 2px solid #475569 !important;
+  }
+}
