@@ -40,22 +40,19 @@ export const LiquidGlassNav: React.FC<LiquidGlassNavProps> = ({
             aria-label={tab.label}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "tap-press min-h-[48px] min-w-[48px] relative flex flex-col items-center justify-center gap-1 rounded-xl transition-all duration-150",
-              isActive ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
+              "tap-press min-h-[48px] flex-1 relative flex flex-col items-center justify-center gap-1 rounded-xl transition-all duration-150",
+              isActive ? "bg-blue-50/80 text-blue-700 font-bold" : "text-slate-500 hover:text-slate-800"
             )}
           >
             <div className="relative">
-              <Icon className={cn("w-5 h-5", isActive ? "stroke-[2.5]" : "stroke-[1.8]")} />
+              <Icon className={cn("w-4 h-4", isActive ? "stroke-[2.5]" : "stroke-[1.8]")} />
               {tab.badge !== undefined && tab.badge > 0 && (
-                <span className="absolute -top-1 -right-2 w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white">
+                <span className="absolute -top-1 -right-2 w-3.5 h-3.5 rounded-full bg-blue-600 text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-white">
                   {tab.badge}
                 </span>
               )}
             </div>
-            <span className="text-[10px] font-medium leading-none">{tab.label}</span>
-            {isActive && (
-              <span className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-blue-600" />
-            )}
+            <span className="text-[10px] font-semibold leading-none">{tab.label}</span>
           </button>
         );
       })}

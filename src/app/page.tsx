@@ -13,6 +13,7 @@ import { Sidebar, NavViewId } from "@/components/shell/Sidebar";
 import { TopHeader } from "@/components/shell/TopHeader";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { LiquidGlassNav } from "@/components/shell/LiquidGlassNav";
+import { LoginLockScreen } from "@/components/auth/LoginLockScreen";
 
 // Feature Views
 import { CommandCenterView } from "@/components/views/CommandCenterView";
@@ -33,6 +34,7 @@ function HomeContent() {
   const [currentView, setCurrentView] = useState<NavViewId>("command_center");
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLocked, setIsLocked] = useState(true);
 
   // Celebratory OAuth Return Banner
   const [oauthSuccessNotice, setOauthSuccessNotice] = useState<{
@@ -105,6 +107,7 @@ function HomeContent() {
           onOpenConnectModal={() => setCurrentView("social_accounts")}
           unreadInboxCount={unreadInboxCount}
           pendingApprovalsCount={pendingApprovalsCount}
+          onLockDashboard={() => setIsLocked(true)}
         />
 
         {/* Mobile Slide-in Drawer with Framer Motion */}
@@ -146,6 +149,10 @@ function HomeContent() {
                   unreadInboxCount={unreadInboxCount}
                   pendingApprovalsCount={pendingApprovalsCount}
                   onCloseMobile={() => setIsMobileMenuOpen(false)}
+                  onLockDashboard={() => {
+                    setIsMobileMenuOpen(false);
+                    setIsLocked(true);
+                  }}
                 />
               </motion.div>
             </div>
@@ -161,10 +168,11 @@ function HomeContent() {
             onQuickCreate={() => setCurrentView("content_studio")}
             onOpenConnectAccounts={() => setCurrentView("social_accounts")}
             onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
+            onLockDashboard={() => setIsLocked(true)}
           />
 
-          {/* View Container */}
-          <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
+          {/* View Container with generous bottom padding for mobile dock */}
+          <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 pb-28 md:pb-8 overflow-y-auto">
             {currentView === "command_center" && (
               <CommandCenterView
                 currentWorkspace={currentWorkspace}
@@ -281,6 +289,16 @@ function HomeContent() {
         onSelectWorkspace={setCurrentWorkspace}
         currentWorkspace={currentWorkspace}
       />
+
+      {/* Apple-Style Biometric Login Lock Screen with Face ID & PIN 1234 */}
+      <AnimatePresence>
+        {isLocked && (
+          <LoginLockScreen
+            currentWorkspace={currentWorkspace}
+            onUnlock={() => setIsLocked(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

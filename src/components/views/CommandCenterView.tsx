@@ -122,23 +122,23 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16 animate-in fade-in duration-300">
+    <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-6 animate-in fade-in duration-300">
       {/* 1. Real-time Multi-Network Telemetry Strip */}
-      <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono font-bold text-[11px]">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono font-bold text-[10px] sm:text-[11px] shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>ALL APIS OPERATIONAL</span>
           </div>
-          <span className="hidden sm:inline text-slate-400">|</span>
-          <div className="hidden sm:flex items-center gap-1 text-slate-600 font-medium">
-            <Activity className="w-3.5 h-3.5 text-blue-600" />
-            <span>Avg Response: <strong className="text-slate-900 font-mono">31ms</strong></span>
+          <span className="hidden sm:inline text-slate-300">|</span>
+          <div className="flex items-center gap-1 text-slate-600 font-medium text-[11px]">
+            <Activity className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span>Latency: <strong className="text-slate-900 font-mono">31ms</strong></span>
           </div>
         </div>
 
-        {/* Channels micro-ticker */}
-        <div className="flex items-center gap-3 overflow-x-auto py-0.5">
+        {/* Channels micro-ticker with smooth horizontal swipe */}
+        <div className="flex items-center gap-3 overflow-x-auto py-1 max-w-full scrollbar-none">
           {networkTelemetries.map((net) => (
             <div key={net.platform} className="flex items-center gap-1.5 font-mono text-[11px] text-slate-600 shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -150,52 +150,49 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
       </div>
 
       {/* 2. Top Welcome & Agency Workspace Banner */}
-      <GlassPanel className="p-6 md:p-8 border-slate-200/90 bg-white relative overflow-hidden shadow-xs">
+      <GlassPanel className="p-5 sm:p-6 md:p-8 border-slate-200/90 bg-white relative overflow-hidden shadow-xs">
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-500/8 via-indigo-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="relative">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
+          <div className="flex items-start sm:items-center gap-3.5 sm:gap-4">
+            <div className="relative shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={currentWorkspace.avatarUrl}
                 alt={currentWorkspace.name}
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-200 shadow-md ring-4 ring-blue-500/10"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-slate-200 shadow-md ring-4 ring-blue-500/10"
               />
-              <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+              <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white" />
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white" />
               </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight truncate">
                   {currentWorkspace.name}
                 </h2>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 capitalize font-bold font-mono">
+                <span className="text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 capitalize font-bold font-mono shrink-0">
                   {currentWorkspace.category.replace("_", " ")}
                 </span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-semibold font-mono">
-                  Tier: Enterprise VIP
-                </span>
               </div>
-              <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed">
+              <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed line-clamp-2 sm:line-clamp-none">
                 {currentWorkspace.tagline}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid grid-cols-1 sm:flex sm:items-center gap-2.5 w-full lg:w-auto">
             <button
               onClick={() => onNavigate("social_accounts")}
-              className="tap-press min-h-[44px] flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-300 shadow-2xs transition-all hover:border-slate-400"
+              className="tap-press min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-300 shadow-2xs transition-all hover:border-slate-400"
             >
               <Share2 className="w-4 h-4 text-blue-600" />
               <span>Linked Channels ({currentWorkspace.connectedCount})</span>
             </button>
             <button
               onClick={() => onNavigate("content_studio")}
-              className="tap-press min-h-[44px] flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all"
+              className="tap-press min-h-[44px] flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all"
             >
               <Sparkles className="w-4 h-4 text-blue-200" />
               <span>✦ Multi-Network Composer</span>

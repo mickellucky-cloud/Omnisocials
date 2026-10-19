@@ -20,6 +20,7 @@ import {
   Check,
   Plus,
   Link as LinkIcon,
+  Lock,
 } from "lucide-react";
 
 export type NavViewId =
@@ -61,6 +62,7 @@ interface SidebarProps {
   pendingApprovalsCount?: number;
   className?: string;
   onCloseMobile?: () => void;
+  onLockDashboard?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -73,6 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   pendingApprovalsCount = 1,
   className,
   onCloseMobile,
+  onLockDashboard,
 }) => {
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
 
@@ -335,7 +338,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           </div>
-          <div className="text-right shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onLockDashboard && (
+              <button
+                onClick={onLockDashboard}
+                aria-label="Lock Dashboard"
+                title="Lock Dashboard (Face ID & PIN)"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            )}
             <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Live
