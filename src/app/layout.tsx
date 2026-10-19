@@ -5,6 +5,15 @@ export const metadata: Metadata = {
   title: "OmniSocial — Enterprise Social Media Management SaaS",
   description:
     "Production-grade social media management platform featuring Buffer-style smart queueing, Sprout Social 3-pane unified engagement inbox, AI repurposing copilot, and multi-network executive analytics.",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/icon.svg",
+    apple: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+  },
 };
 
 export default function RootLayout({
@@ -21,6 +30,8 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap"
           rel="stylesheet"
         />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" sizes="any" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
       </head>
       <body className="bg-[#F8FAFC] text-slate-900 antialiased selection:bg-blue-600/20 selection:text-blue-900 min-h-screen relative">
         <div className="ambient-mesh" aria-hidden="true" />
