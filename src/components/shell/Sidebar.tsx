@@ -343,7 +343,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={onLockDashboard}
                 aria-label="Lock Dashboard"
-                title="Lock Dashboard (Face ID & PIN)"
+                title="Lock Dashboard (PIN: 1234)"
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               >
                 <Lock className="w-3.5 h-3.5" />

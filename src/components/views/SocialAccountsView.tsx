@@ -35,7 +35,7 @@ import {
   saveStoredRealCredentials,
   VerificationResult,
 } from "@/lib/social/credentials";
-import { getStoredAccounts } from "@/lib/data/storage";
+import { getStoredAccounts, saveConnectedAccount, disconnectAccount } from "@/lib/data/storage";
 import { buildOAuthAuthorizationUrl, OAUTH_PLATFORM_CONFIGS } from "@/lib/social/oauth";
 
 interface SocialAccountsViewProps {
@@ -105,17 +105,14 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
           accountName: data.accountName || `${currentWorkspace.name} (${platform.toUpperCase()})`,
           accountAvatar: data.avatarUrl || currentWorkspace.avatarUrl,
           status: "active",
-          followersCount: data.details?.followersCount || (platform === "telegram" ? 1420 : 8500),
+          followersCount: data.details?.followersCount || 0,
           latencyMs: data.latencyMs || 45,
           connectedAt: new Date().toISOString(),
           scopes: ["read", "write", "publish"],
         };
 
-        const existing = getStoredAccounts(currentWorkspace.id);
-        const filtered = existing.filter((a) => a.platform !== platformId);
-        const updated = [newOrUpdatedAcc, ...filtered];
-        localStorage.setItem("omnisocial_accounts_v1", JSON.stringify(updated));
-        setAccounts(updated);
+        saveConnectedAccount(newOrUpdatedAcc);
+        setAccounts(getStoredAccounts(currentWorkspace.id));
 
         if (onAccountConnected) onAccountConnected();
       }
@@ -159,9 +156,8 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   };
 
   const handleDisconnect = (id: string) => {
-    const updated = accounts.filter((a) => a.id !== id);
-    setAccounts(updated);
-    localStorage.setItem("omnisocial_accounts_v1", JSON.stringify(updated));
+    disconnectAccount(currentWorkspace.id, id);
+    setAccounts(getStoredAccounts(currentWorkspace.id));
     setFeedback("Account removed from active management.");
     if (onAccountConnected) onAccountConnected();
   };

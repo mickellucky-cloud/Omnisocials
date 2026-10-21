@@ -193,60 +193,18 @@ export function createAuthenticatedAccount(params: {
   const { platform, workspaceId, handle, name, avatar } = params;
   const config = OAUTH_PLATFORM_CONFIGS[platform];
 
-  const defaultHandles: Record<PlatformId, string> = {
-    x: "@AcmeCloudHQ",
-    linkedin: "acme-cloud-enterprise",
-    instagram: "@acmecloudlife",
-    facebook: "Acme Cloud Technologies",
-    tiktok: "@acmecloud_tok",
-    youtube: "@AcmeCloudEngineers",
-    telegram: "@AcmeCloud_AnnounceBot",
-    threads: "@acmecloudlife",
-  };
-
-  const defaultNames: Record<PlatformId, string> = {
-    x: "Acme Cloud Infrastructure (Official)",
-    linkedin: "Acme Cloud Enterprise Solutions",
-    instagram: "Acme Cloud Culture & Engineering",
-    facebook: "Acme Cloud Official Page",
-    tiktok: "Acme Cloud Official TikTok",
-    youtube: "Acme Cloud Tech Talks",
-    telegram: "Acme Cloud Engineering Bulletins",
-    threads: "Acme Cloud on Threads",
-  };
-
-  const defaultAvatars: Record<PlatformId, string> = {
-    x: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80",
-    linkedin: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80",
-    instagram: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80",
-    facebook: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80",
-    tiktok: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80",
-    youtube: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80",
-    telegram: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=120&q=80",
-    threads: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80",
-  };
-
-  const defaultFollowers: Record<PlatformId, number> = {
-    x: 184500,
-    linkedin: 96200,
-    instagram: 28900,
-    facebook: 41200,
-    tiktok: 164000,
-    youtube: 52400,
-    telegram: 14200,
-    threads: 19800,
-  };
+  const defaultAvatar = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80";
 
   return {
     id: `acc-${platform}-${Date.now()}`,
     workspaceId,
     platform,
-    accountHandle: handle || defaultHandles[platform] || `@${workspaceId}_${platform}`,
-    accountName: name || defaultNames[platform] || `${workspaceId} on ${config?.name || platform}`,
-    accountAvatar: avatar || defaultAvatars[platform] || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80",
+    accountHandle: handle || `@${workspaceId}_${platform}`,
+    accountName: name || `${workspaceId} (${config?.name || platform.toUpperCase()})`,
+    accountAvatar: avatar || defaultAvatar,
     status: "active",
-    followersCount: defaultFollowers[platform] || 15000,
-    latencyMs: Math.floor(Math.random() * 25) + 30, // 30-55ms
+    followersCount: 0,
+    latencyMs: 38,
     connectedAt: new Date().toISOString(),
     scopes: config?.defaultScopes || ["read", "write", "publish"],
   };

@@ -27,21 +27,7 @@ function OAuthConsentContent() {
   const config = OAUTH_PLATFORM_CONFIGS[platform] || OAUTH_PLATFORM_CONFIGS.x;
 
   const [accountHandle, setAccountHandle] = useState(
-    platform === "x"
-      ? "@AcmeCloudHQ"
-      : platform === "linkedin"
-      ? "acme-cloud-enterprise"
-      : platform === "instagram"
-      ? "@acmecloudlife"
-      : platform === "tiktok"
-      ? "@acmecloud_tok"
-      : platform === "telegram"
-      ? "@AcmeCloud_AnnounceBot"
-      : platform === "youtube"
-      ? "@AcmeCloudEngineers"
-      : platform === "threads"
-      ? "@acmecloudlife"
-      : `@${workspaceId}_${platform}`
+    searchParams.get("handle") || `@${workspaceId}`
   );
 
   const [isAuthorizing, setIsAuthorizing] = useState(false);

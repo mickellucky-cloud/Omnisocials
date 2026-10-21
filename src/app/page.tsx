@@ -215,6 +215,7 @@ function HomeContent() {
                 currentWorkspace={currentWorkspace}
                 threads={threads}
                 onRefresh={refreshData}
+                onNavigateToAccounts={() => setCurrentView("social_accounts")}
               />
             )}
             {currentView === "listening" && (
@@ -290,7 +291,7 @@ function HomeContent() {
         currentWorkspace={currentWorkspace}
       />
 
-      {/* Apple-Style Biometric Login Lock Screen with Face ID & PIN 1234 */}
+      {/* Security Login Lock Screen with Passcode PIN (Default: 1234) */}
       <AnimatePresence>
         {isLocked && (
           <LoginLockScreen

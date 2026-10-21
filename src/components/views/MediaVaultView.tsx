@@ -101,12 +101,12 @@ export const MediaVaultView: React.FC<MediaVaultViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* Category Tabs */}
           <div 
             role="tablist"
             aria-label="Media asset category filter"
-            className="p-1 rounded-xl bg-slate-100 border border-slate-200 flex items-center gap-1 text-xs"
+            className="p-1 rounded-xl bg-slate-100 border border-slate-200 flex items-center gap-1 text-xs overflow-x-auto max-w-full"
           >
             {["all", "renders", "graphics", "photos"].map((cat) => (
               <button

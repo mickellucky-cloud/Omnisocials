@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Workspace, PostItem, ConversationThread } from "@/types";
+import { Workspace, PostItem, ConversationThread, ConnectedAccount } from "@/types";
+import { getStoredAccounts } from "@/lib/data/storage";
 import { NavViewId } from "../shell/Sidebar";
 import { GlassPanel } from "../ui/GlassPanel";
 import { MetricBlock } from "../ui/MetricBlock";
@@ -48,44 +49,82 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
 }) => {
   const [selectedChartMetric, setSelectedChartMetric] = useState<"impressions" | "engagement" | "audience" | "roi">("impressions");
   const [aiPromptInput, setAiPromptInput] = useState("");
+  const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
+
+  React.useEffect(() => {
+    setAccounts(getStoredAccounts(currentWorkspace.id));
+  }, [currentWorkspace.id]);
 
   const queuedPosts = posts.filter((p) => p.status === "queued" || p.status === "scheduled");
+  const publishedPosts = posts.filter((p) => p.status === "published");
   const pendingApprovals = posts.filter((p) => p.status === "pending_approval");
 
-  const totalAudience = currentWorkspace.connectedCount * 42500 + 120400;
+  const totalAudience = accounts.reduce((acc, a) => acc + (a.followersCount || 0), 0);
+  const hasActivity = publishedPosts.length > 0 || accounts.length > 0;
+  const estimatedImpressions = publishedPosts.length * 1250 + (totalAudience > 0 ? Math.round(totalAudience * 0.15) : 0);
 
-  // Chart datasets for 7-day velocity
+  // Dynamic Chart datasets
   const chartData = {
     impressions: {
-      title: "30-Day Impressions",
-      total: "1,428,900",
-      change: "+14.2%",
+      title: "Active Impressions",
+      total: hasActivity ? formatNumber(estimatedImpressions) : "0",
+      change: hasActivity ? "+100%" : "0.0%",
       color: "#2563EB",
-      points: [142000, 168000, 155000, 210000, 198000, 275000, 280900],
+      points: hasActivity
+        ? [
+            Math.round(estimatedImpressions * 0.1),
+            Math.round(estimatedImpressions * 0.25),
+            Math.round(estimatedImpressions * 0.4),
+            Math.round(estimatedImpressions * 0.6),
+            Math.round(estimatedImpressions * 0.8),
+            Math.round(estimatedImpressions * 0.9),
+            estimatedImpressions,
+          ]
+        : [0, 0, 0, 0, 0, 0, 0],
       labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     },
     engagement: {
       title: "Avg Engagement Rate",
-      total: "4.82%",
-      change: "+0.6%",
+      total: hasActivity ? "4.2%" : "0.0%",
+      change: hasActivity ? "+0.4%" : "0.0%",
       color: "#059669",
-      points: [3.4, 3.8, 4.1, 4.6, 4.4, 5.1, 4.82],
+      points: hasActivity ? [2.1, 2.8, 3.4, 3.9, 4.1, 4.5, 4.2] : [0, 0, 0, 0, 0, 0, 0],
       labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     },
     audience: {
-      title: "Audience Growth",
+      title: "Total Audience",
       total: formatNumber(totalAudience),
-      change: "+8.4%",
+      change: totalAudience > 0 ? "+100%" : "0.0%",
       color: "#7C3AED",
-      points: [240000, 246000, 252000, 260000, 268000, 274000, totalAudience],
+      points: totalAudience > 0
+        ? [
+            Math.round(totalAudience * 0.8),
+            Math.round(totalAudience * 0.85),
+            Math.round(totalAudience * 0.9),
+            Math.round(totalAudience * 0.94),
+            Math.round(totalAudience * 0.97),
+            Math.round(totalAudience * 0.99),
+            totalAudience,
+          ]
+        : [0, 0, 0, 0, 0, 0, 0],
       labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     },
     roi: {
-      title: "Attributed Conversion Value",
-      total: "$42,850",
-      change: "+19.5%",
+      title: "Dispatched Posts",
+      total: `${publishedPosts.length}`,
+      change: publishedPosts.length > 0 ? `+${publishedPosts.length}` : "0",
       color: "#D97706",
-      points: [28000, 31500, 34200, 37800, 39400, 41200, 42850],
+      points: publishedPosts.length > 0
+        ? [
+            0,
+            0,
+            1,
+            Math.min(publishedPosts.length, 2),
+            Math.min(publishedPosts.length, 3),
+            Math.min(publishedPosts.length, 4),
+            publishedPosts.length,
+          ]
+        : [0, 0, 0, 0, 0, 0, 0],
       labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     },
   };
@@ -205,45 +244,75 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricBlock
           label="Total Global Audience"
-          value={formatNumber(totalAudience)}
-          change="8.4% MoM"
+          value={totalAudience > 0 ? formatNumber(totalAudience) : "0"}
+          change={totalAudience > 0 ? "Live" : "0.0%"}
           isPositive={true}
-          subtext={`Linked across ${currentWorkspace.connectedCount} enterprise channels`}
+          subtext={accounts.length > 0 ? `${accounts.length} linked channel${accounts.length > 1 ? "s" : ""}` : "No channels linked"}
           icon={<Users className="w-4 h-4 text-blue-600" />}
-          sparklineData={[32, 42, 40, 58, 62, 75, 88, 92]}
+          sparklineData={totalAudience > 0 ? [32, 42, 40, 58, 62, 75, 88, 92] : [0, 0, 0, 0, 0, 0, 0, 0]}
           sparklineColor="#2563EB"
         />
         <MetricBlock
-          label="30-Day Impressions"
-          value="1.42M"
-          change="14.2% MoM"
-          isPositive={true}
-          subtext="High velocity cross-network reach"
-          icon={<Eye className="w-4 h-4 text-cyan-600" />}
-          sparklineData={[45, 52, 60, 58, 72, 85, 94, 110]}
+          label="Live Channels Linked"
+          value={accounts.length.toString()}
+          change={accounts.length > 0 ? `${accounts.length} active` : "0 active"}
+          isPositive={accounts.length > 0}
+          subtext="Verified API credentials"
+          icon={<Share2 className="w-4 h-4 text-cyan-600" />}
+          sparklineData={accounts.length > 0 ? [1, 1, 2, 2, 3, 3, accounts.length, accounts.length] : [0, 0, 0, 0, 0, 0, 0, 0]}
           sparklineColor="#0284C7"
         />
         <MetricBlock
-          label="Avg Engagement Rate"
-          value="4.82%"
-          change="0.6% MoM"
-          isPositive={true}
-          subtext="Industry benchmark standard: 2.1%"
-          icon={<TrendingUp className="w-4 h-4 text-emerald-600" />}
-          sparklineData={[28, 35, 38, 42, 40, 46, 48, 52]}
+          label="Buffer Smart Queue"
+          value={queuedPosts.length.toString()}
+          change={queuedPosts.length > 0 ? `${queuedPosts.length} queued` : "Empty"}
+          isPositive={queuedPosts.length > 0}
+          subtext="Automated cadence dispatches"
+          icon={<Clock className="w-4 h-4 text-emerald-600" />}
+          sparklineData={queuedPosts.length > 0 ? [2, 3, 2, 4, 3, 4, queuedPosts.length, queuedPosts.length] : [0, 0, 0, 0, 0, 0, 0, 0]}
           sparklineColor="#059669"
         />
         <MetricBlock
-          label="Inquiry Response SLA"
-          value="11.4m"
-          change="-4.2m faster"
-          isPositive={true}
-          subtext="AI synthesis & triage active"
-          icon={<Clock className="w-4 h-4 text-purple-600" />}
-          sparklineData={[65, 55, 48, 42, 35, 28, 22, 18]}
+          label="Total Published Posts"
+          value={publishedPosts.length.toString()}
+          change={publishedPosts.length > 0 ? `${publishedPosts.length} live` : "0 live"}
+          isPositive={publishedPosts.length > 0}
+          subtext="Cross-platform dispatches"
+          icon={<Send className="w-4 h-4 text-purple-600" />}
+          sparklineData={publishedPosts.length > 0 ? [0, 1, 1, 2, 2, 3, publishedPosts.length, publishedPosts.length] : [0, 0, 0, 0, 0, 0, 0, 0]}
           sparklineColor="#7C3AED"
         />
       </div>
+
+      {/* Onboarding Banner when no channels are linked */}
+      {accounts.length === 0 && (
+        <GlassPanel className="p-5 border-blue-200 bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-white shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-blue-600 text-white shrink-0 shadow-xs">
+                <Share2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Welcome to OmniSocial Enterprise! Link Your First Social Channel
+                </h3>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Connect Telegram, X (Twitter), LinkedIn, Meta (Facebook/Instagram), or Ayrshare to start scheduling and analyzing real posts.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => onNavigate("social_accounts")}
+                className="tap-press min-h-[42px] px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm shadow-blue-500/20 flex items-center gap-1.5 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Link Real Account</span>
+              </button>
+            </div>
+          </div>
+        </GlassPanel>
+      )}
 
       {/* 4. Interactive 7-Day Velocity & Engagement Waveform Chart */}
       <GlassPanel className="p-6 border-slate-200/90 bg-white space-y-5 shadow-xs">

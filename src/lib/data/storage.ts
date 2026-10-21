@@ -6,40 +6,49 @@ import {
   PostStatus,
   ApprovalHistoryEntry,
 } from "@/types";
-import { initialPosts, initialThreads } from "./mockData";
-import { initialConnectedAccounts } from "./workspaces";
 
 const STORAGE_KEYS = {
-  POSTS: "omnisocial_posts_v1",
-  THREADS: "omnisocial_threads_v1",
+  POSTS: "omnisocial_posts_v2",
+  THREADS: "omnisocial_threads_v2",
   ACCOUNTS: "omnisocial_accounts_v1",
   ACTIVE_WORKSPACE: "omnisocial_active_ws",
   QUEUE_PAUSED: "omnisocial_queue_paused_",
 };
 
+// Auto-purge any legacy mock items from browser storage
+if (typeof window !== "undefined") {
+  try {
+    const legacyPostKey = "omnisocial_posts_v1";
+    const legacyThreadKey = "omnisocial_threads_v1";
+    const rawPosts = localStorage.getItem(legacyPostKey);
+    if (rawPosts && rawPosts.includes("post-1")) {
+      localStorage.removeItem(legacyPostKey);
+    }
+    const rawThreads = localStorage.getItem(legacyThreadKey);
+    if (rawThreads && rawThreads.includes("thread-1")) {
+      localStorage.removeItem(legacyThreadKey);
+    }
+    const rawAccounts = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
+    if (rawAccounts && (rawAccounts.includes("acc-acme-x") || rawAccounts.includes("acc-lumina-ig"))) {
+      localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
+    }
+  } catch {
+    // Ignore storage restrictions
+  }
+}
+
 export function getStoredPosts(workspaceId: WorkspaceId): PostItem[] {
   if (typeof window === "undefined") {
-    return initialPosts.filter((p) => p.workspaceId === workspaceId);
+    return [];
   }
   try {
     const data = localStorage.getItem(STORAGE_KEYS.POSTS);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(initialPosts));
-      return initialPosts.filter((p) => p.workspaceId === workspaceId);
-    }
+    if (!data) return [];
     const parsed: PostItem[] = JSON.parse(data);
-    const filtered = parsed.filter((p) => p.workspaceId === workspaceId);
-    if (filtered.length === 0) {
-      // Re-seed if empty for this workspace
-      const seeds = initialPosts.filter((p) => p.workspaceId === workspaceId);
-      const combined = [...parsed, ...seeds];
-      localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(combined));
-      return seeds;
-    }
-    return filtered;
+    return parsed.filter((p) => p.workspaceId === workspaceId);
   } catch (err) {
     console.error("Failed to load posts from storage:", err);
-    return initialPosts.filter((p) => p.workspaceId === workspaceId);
+    return [];
   }
 }
 
@@ -47,7 +56,7 @@ export function savePost(post: PostItem): void {
   if (typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.POSTS);
-    let all: PostItem[] = raw ? JSON.parse(raw) : [...initialPosts];
+    let all: PostItem[] = raw ? JSON.parse(raw) : [];
     const index = all.findIndex((p) => p.id === post.id);
     if (index >= 0) {
       all[index] = post;
@@ -68,7 +77,8 @@ export function updatePostStatus(
   if (typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.POSTS);
-    let all: PostItem[] = raw ? JSON.parse(raw) : [...initialPosts];
+    if (!raw) return;
+    const all: PostItem[] = JSON.parse(raw);
     const post = all.find((p) => p.id === postId);
     if (post) {
       post.status = newStatus;
@@ -85,15 +95,28 @@ export function updatePostStatus(
   }
 }
 
+export function deletePost(postId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.POSTS);
+    if (!raw) return;
+    const all: PostItem[] = JSON.parse(raw);
+    const updated = all.filter((p) => p.id !== postId);
+    localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updated));
+  } catch (err) {
+    console.error("Failed to delete post:", err);
+  }
+}
+
 export function reorderQueue(workspaceId: WorkspaceId, orderedPostIds: string[]): void {
   if (typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.POSTS);
-    let all: PostItem[] = raw ? JSON.parse(raw) : [...initialPosts];
+    if (!raw) return;
+    const all: PostItem[] = JSON.parse(raw);
     const wsPosts = all.filter((p) => p.workspaceId === workspaceId);
     const otherPosts = all.filter((p) => p.workspaceId !== workspaceId);
 
-    // Map order
     const ordered = orderedPostIds
       .map((id) => wsPosts.find((p) => p.id === id))
       .filter((p): p is PostItem => p !== undefined);
@@ -108,26 +131,16 @@ export function reorderQueue(workspaceId: WorkspaceId, orderedPostIds: string[])
 
 export function getStoredThreads(workspaceId: WorkspaceId): ConversationThread[] {
   if (typeof window === "undefined") {
-    return initialThreads.filter((t) => t.workspaceId === workspaceId);
+    return [];
   }
   try {
     const data = localStorage.getItem(STORAGE_KEYS.THREADS);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.THREADS, JSON.stringify(initialThreads));
-      return initialThreads.filter((t) => t.workspaceId === workspaceId);
-    }
+    if (!data) return [];
     const parsed: ConversationThread[] = JSON.parse(data);
-    const filtered = parsed.filter((t) => t.workspaceId === workspaceId);
-    if (filtered.length === 0) {
-      const seeds = initialThreads.filter((t) => t.workspaceId === workspaceId);
-      const combined = [...parsed, ...seeds];
-      localStorage.setItem(STORAGE_KEYS.THREADS, JSON.stringify(combined));
-      return seeds;
-    }
-    return filtered;
+    return parsed.filter((t) => t.workspaceId === workspaceId);
   } catch (err) {
     console.error("Failed to load threads:", err);
-    return initialThreads.filter((t) => t.workspaceId === workspaceId);
+    return [];
   }
 }
 
@@ -135,7 +148,7 @@ export function saveThread(thread: ConversationThread): void {
   if (typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.THREADS);
-    let all: ConversationThread[] = raw ? JSON.parse(raw) : [...initialThreads];
+    let all: ConversationThread[] = raw ? JSON.parse(raw) : [];
     const index = all.findIndex((t) => t.id === thread.id);
     if (index >= 0) {
       all[index] = thread;
@@ -150,19 +163,44 @@ export function saveThread(thread: ConversationThread): void {
 
 export function getStoredAccounts(workspaceId: WorkspaceId): ConnectedAccount[] {
   if (typeof window === "undefined") {
-    return initialConnectedAccounts.filter((a) => a.workspaceId === workspaceId);
+    return [];
   }
   try {
     const data = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(initialConnectedAccounts));
-      return initialConnectedAccounts.filter((a) => a.workspaceId === workspaceId);
-    }
+    if (!data) return [];
     const parsed: ConnectedAccount[] = JSON.parse(data);
     return parsed.filter((a) => a.workspaceId === workspaceId);
   } catch (err) {
     console.error("Failed to load accounts:", err);
-    return initialConnectedAccounts.filter((a) => a.workspaceId === workspaceId);
+    return [];
+  }
+}
+
+export function saveConnectedAccount(account: ConnectedAccount): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
+    const all: ConnectedAccount[] = raw ? JSON.parse(raw) : [];
+    const filtered = all.filter(
+      (a) => !(a.workspaceId === account.workspaceId && a.platform === account.platform)
+    );
+    const updated = [account, ...filtered];
+    localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(updated));
+  } catch (err) {
+    console.error("Failed to save connected account:", err);
+  }
+}
+
+export function disconnectAccount(workspaceId: WorkspaceId, accountId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
+    if (!raw) return;
+    const all: ConnectedAccount[] = JSON.parse(raw);
+    const updated = all.filter((a) => a.id !== accountId);
+    localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(updated));
+  } catch (err) {
+    console.error("Failed to disconnect account:", err);
   }
 }
 

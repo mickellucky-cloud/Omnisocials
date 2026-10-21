@@ -39,9 +39,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
   onPostCreated,
   onOpenAccounts,
 }) => {
-  const [concept, setConcept] = useState(
-    `We are launching our next-generation architecture across all distributed clusters. Sub-5ms latency, contractual 99.999% SLA uptime, and zero-downtime consensus failover.`
-  );
+  const [concept, setConcept] = useState("");
   const [targetPlatforms, setTargetPlatforms] = useState<PlatformId[]>([
     "x",
     "linkedin",
@@ -50,23 +48,24 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
   ]);
   const [activePlatformTab, setActivePlatformTab] = useState<PlatformId>("x");
   const [previewPlatform, setPreviewPlatform] = useState<PlatformId>("x");
-  const [mediaUrl, setMediaUrl] = useState(
-    "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80"
-  );
+  const [mediaUrl, setMediaUrl] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishResults, setPublishResults] = useState<PublishResult[] | null>(null);
   const [firstComment, setFirstComment] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  // Initialize variants
-  const [variants, setVariants] = useState<Record<PlatformId, PostVariant>>(() =>
-    generatePlatformVariants({
-      workspaceId: currentWorkspace.id,
-      rawConcept: concept,
-      primaryMediaUrl: mediaUrl,
-    })
-  );
+  // Initialize variants cleanly
+  const [variants, setVariants] = useState<Record<PlatformId, PostVariant>>(() => ({
+    x: { platform: "x", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 3), mediaUrls: [] },
+    linkedin: { platform: "linkedin", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 4), mediaUrls: [] },
+    instagram: { platform: "instagram", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags, mediaUrls: [] },
+    facebook: { platform: "facebook", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 2), mediaUrls: [] },
+    tiktok: { platform: "tiktok", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 2), mediaUrls: [] },
+    youtube: { platform: "youtube", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 2), mediaUrls: [] },
+    telegram: { platform: "telegram", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 2), mediaUrls: [] },
+    threads: { platform: "threads", text: "", hashtags: currentWorkspace.guidelines.defaultHashtags.slice(0, 3), mediaUrls: [] },
+  }));
 
   // Live safety calculation
   const currentText = variants[activePlatformTab]?.text || concept;
@@ -126,6 +125,14 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
   };
 
   const handleDispatch = async (targetStatus: "queued" | "pending_approval" | "published") => {
+    const activeText = (activeVariant.text || "").trim();
+    const rawText = concept.trim();
+
+    if (!activeText && !rawText) {
+      setFeedbackMessage("⚠️ Please enter a concept or write post copy before dispatching.");
+      return;
+    }
+
     let dispatchOutcomes: PublishResult[] | undefined = undefined;
 
     if (targetStatus === "published") {
@@ -140,7 +147,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             platforms: targetPlatforms,
-            text: activeVariant.text || concept,
+            text: activeText || rawText,
             mediaUrls: mediaUrl ? [mediaUrl] : undefined,
             credentials,
           }),
@@ -179,11 +186,13 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
       }
     }
 
+    const displayTitle = (rawText || activeText).slice(0, 48) + "...";
+
     const newPost: PostItem = {
       id: `post-${Date.now()}`,
       workspaceId: currentWorkspace.id,
-      title: concept.slice(0, 48) + "...",
-      rawConcept: concept,
+      title: displayTitle,
+      rawConcept: rawText || activeText,
       targetPlatforms,
       variants,
       status: targetStatus,
@@ -520,24 +529,24 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
               Ready to schedule for <span className="font-semibold text-slate-900">{targetPlatforms.length} networks</span>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => handleDispatch("pending_approval")}
-                className="tap-press flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 border border-slate-300 shadow-2xs"
+                className="tap-press min-h-[40px] flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 border border-slate-300 shadow-2xs whitespace-nowrap text-center"
               >
-                Submit for Approval
+                For Approval
               </button>
               <button
                 onClick={() => handleDispatch("queued")}
-                className="tap-press flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs"
+                className="tap-press min-h-[40px] flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap"
               >
-                <Clock className="w-3.5 h-3.5" />
+                <Clock className="w-3.5 h-3.5 shrink-0" />
                 <span>Buffer Queue</span>
               </button>
               <button
                 onClick={() => handleDispatch("published")}
                 disabled={isPublishing}
-                className="tap-press flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm shadow-blue-500/20 flex items-center justify-center gap-1.5 disabled:opacity-60"
+                className="tap-press min-h-[40px] flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm shadow-blue-500/20 flex items-center justify-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
               >
                 {isPublishing ? (
                   <>

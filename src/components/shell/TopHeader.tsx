@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { Workspace } from "@/types";
 import { NavViewId } from "./Sidebar";
 import { Search, Plus, Bell, Command, Menu, Sparkles, Clock, Share2, Lock } from "lucide-react";
+import { getStoredAccounts, getStoredPosts } from "@/lib/data/storage";
+import { formatRelativeTime } from "@/lib/utils";
 
 interface TopHeaderProps {
   currentView: NavViewId;
@@ -73,6 +75,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 }) => {
   const [currentTime, setCurrentTime] = useState("");
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{ id: string; title: string; subtitle: string; time: string }>>([]);
 
   useEffect(() => {
     const updateTime = () => {
@@ -91,6 +94,50 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const accounts = getStoredAccounts(currentWorkspace.id);
+    const posts = getStoredPosts(currentWorkspace.id);
+
+    const items: Array<{ id: string; title: string; subtitle: string; time: string }> = [];
+
+    // Accounts notifications
+    accounts.forEach((acc) => {
+      items.push({
+        id: `acc-${acc.id}`,
+        title: `${acc.platform.toUpperCase()} Connected`,
+        subtitle: `${acc.accountHandle.startsWith("@") ? acc.accountHandle : "@" + acc.accountHandle} verified and active on ${acc.platform}.`,
+        time: acc.connectedAt ? formatRelativeTime(acc.connectedAt) : "Active",
+      });
+    });
+
+    // Published posts notifications
+    posts
+      .filter((p) => p.status === "published")
+      .forEach((p) => {
+        items.push({
+          id: `pub-${p.id}`,
+          title: "Post Dispatched",
+          subtitle: `"${p.title}" published to ${p.targetPlatforms.join(", ")}.`,
+          time: p.publishedAt ? formatRelativeTime(p.publishedAt) : "Recently",
+        });
+      });
+
+    // Queued posts
+    posts
+      .filter((p) => p.status === "queued")
+      .slice(0, 3)
+      .forEach((p) => {
+        items.push({
+          id: `queue-${p.id}`,
+          title: "Post Queued",
+          subtitle: `"${p.title}" scheduled in queue.`,
+          time: p.queueSlotTime || "Upcoming",
+        });
+      });
+
+    setNotifications(items.slice(0, 6));
+  }, [currentWorkspace.id, isNotificationOpen]);
 
   const meta = viewTitles[currentView] || viewTitles.command_center;
 
@@ -150,7 +197,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             className="tap-press p-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-600 hover:text-slate-900 shadow-2xs relative"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-600 ring-2 ring-white" />
+            {notifications.length > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-600 ring-2 ring-white" />
+            )}
           </button>
 
           {isNotificationOpen && (
@@ -158,9 +207,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                 <div className="font-bold text-xs text-slate-900 flex items-center gap-2">
                   <span>Workspace Activity</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 font-mono font-bold">
-                    3 New
-                  </span>
+                  {notifications.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 font-mono font-bold">
+                      {notifications.length} New
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={() => setIsNotificationOpen(false)}
@@ -171,35 +222,41 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               </div>
 
               <div className="space-y-2.5 mt-3 max-h-64 overflow-y-auto">
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-900">𝕏 Post Dispatched</span>
-                    <span className="text-[10px] text-slate-400 font-mono">2m ago</span>
+                {notifications.length > 0 ? (
+                  notifications.map((n) => (
+                    <div key={n.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900">{n.title}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{n.time}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        {n.subtitle}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-6 px-3 text-center space-y-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center mx-auto">
+                      <Bell className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-xs text-slate-800">All systems quiet</div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                        Real-time dispatch alerts and account sync notices will appear here as activity occurs.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsNotificationOpen(false);
+                        onOpenConnectAccounts();
+                      }}
+                      className="tap-press min-h-[32px] px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold border border-blue-200 inline-flex items-center gap-1.5"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Link Social Account</span>
+                    </button>
                   </div>
-                  <p className="text-[11px] text-slate-600">
-                    "Next-gen cloud architecture..." successfully published with 0 latency errors.
-                  </p>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-900">OAuth Handshake Verified</span>
-                    <span className="text-[10px] text-slate-400 font-mono">14m ago</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    Token refreshed for LinkedIn Enterprise with w_organization_social scope.
-                  </p>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-900">Viral Velocity Alert</span>
-                    <span className="text-[10px] text-slate-400 font-mono">1h ago</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    Instagram Reel engagement rate reached 5.4% (2.5x above workspace baseline).
-                  </p>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -209,8 +266,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {onLockDashboard && (
           <button
             onClick={onLockDashboard}
-            aria-label="Lock Dashboard (Face ID & PIN)"
-            title="Lock Dashboard"
+            aria-label="Lock Dashboard (PIN: 1234)"
+            title="Lock Dashboard (PIN: 1234)"
             className="tap-press p-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-600 hover:text-slate-900 shadow-2xs"
           >
             <Lock className="w-4 h-4 text-slate-500 hover:text-blue-600" />
