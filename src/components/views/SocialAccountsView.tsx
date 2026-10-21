@@ -7,7 +7,6 @@ import { PlatformBadge } from "../ui/PlatformBadge";
 import { formatNumber } from "@/lib/utils";
 import {
   Share2,
-  Plus,
   RefreshCw,
   CheckCircle2,
   Key,
@@ -36,7 +35,7 @@ import {
   VerificationResult,
 } from "@/lib/social/credentials";
 import { getStoredAccounts, saveConnectedAccount, disconnectAccount } from "@/lib/data/storage";
-import { buildOAuthAuthorizationUrl, OAUTH_PLATFORM_CONFIGS } from "@/lib/social/oauth";
+import { OAUTH_PLATFORM_CONFIGS } from "@/lib/social/oauth";
 
 interface SocialAccountsViewProps {
   currentWorkspace: Workspace;
@@ -47,12 +46,18 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   currentWorkspace,
   onAccountConnected,
 }) => {
-  const [activeTab, setActiveTab] = useState<"oauth" | "direct" | "ayrshare" | "env">("oauth");
+  const [activeTab, setActiveTab] = useState<"ayrshare" | "telegram" | "direct" | "env">("ayrshare");
   const [credentials, setCredentials] = useState<PlatformCredentials>({});
   const [showTokens, setShowTokens] = useState<Record<string, boolean>>({});
   const [verifyingPlatform, setVerifyingPlatform] = useState<string | null>(null);
   const [verificationFeedback, setVerificationFeedback] = useState<VerificationResult | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Ayrshare-specific states
+  const [isLaunchingSSO, setIsLaunchingSSO] = useState(false);
+  const [isSyncingAyrshare, setIsSyncingAyrshare] = useState(false);
+  const [ayrshareInputKey, setAyrshareInputKey] = useState("");
+  const [isEditingAyrshareKey, setIsEditingAyrshareKey] = useState(false);
 
   // Accounts list
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
@@ -62,6 +67,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   useEffect(() => {
     const creds = getStoredRealCredentials(currentWorkspace.id);
     setCredentials(creds);
+    setAyrshareInputKey(creds.ayrshareApiKey || "");
     setAccounts(getStoredAccounts(currentWorkspace.id));
   }, [currentWorkspace.id]);
 
@@ -75,6 +81,141 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
     saveStoredRealCredentials(currentWorkspace.id, updated);
   };
 
+  // Launch Ayrshare Real SSO Window
+  const handleLaunchAyrshareSSO = async (specificPlatform?: string) => {
+    const apiKey = (credentials.ayrshareApiKey || ayrshareInputKey || "").trim();
+    if (!apiKey) {
+      setFeedback("⚠️ Please enter your Ayrshare API Key first to launch the real SSO connection window.");
+      setIsEditingAyrshareKey(true);
+      return;
+    }
+
+    setIsLaunchingSSO(true);
+    setFeedback(null);
+
+    try {
+      const res = await fetch("/api/social/ayrshare/link-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey,
+          allowedSocial: specificPlatform ? (specificPlatform === "x" ? ["twitter"] : [specificPlatform]) : undefined,
+          redirectUrl: `${window.location.origin}/?tab=social_accounts&ayrshare_linked=true`,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.url) {
+        // Open Ayrshare's authentic SSO popup
+        const width = 640;
+        const height = 760;
+        const left = Math.max(0, (window.innerWidth - width) / 2 + window.screenX);
+        const top = Math.max(0, (window.innerHeight - height) / 2 + window.screenY);
+        
+        window.open(
+          data.url,
+          "AyrshareSSO",
+          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+        );
+
+        setFeedback("✓ Secure Ayrshare SSO session opened! Authenticate your social accounts, then click 'Sync Connected Channels' below.");
+      } else {
+        setFeedback(`⚠️ ${data.error || "Failed to generate Ayrshare link session. Please check your API key."}`);
+      }
+    } catch (err: any) {
+      setFeedback(`⚠️ Network error: ${err.message || "Failed to reach Ayrshare API"}`);
+    } finally {
+      setIsLaunchingSSO(false);
+    }
+  };
+
+  // Sync real accounts from Ayrshare /api/user
+  const handleSyncAyrshare = async () => {
+    const apiKey = (credentials.ayrshareApiKey || ayrshareInputKey || "").trim();
+    if (!apiKey) {
+      setFeedback("⚠️ Please enter and save your Ayrshare API Key first.");
+      setIsEditingAyrshareKey(true);
+      return;
+    }
+
+    setIsSyncingAyrshare(true);
+    setFeedback(null);
+
+    try {
+      const res = await fetch("/api/social/ayrshare/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey,
+          workspaceId: currentWorkspace.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+          data.accounts.forEach((acc: ConnectedAccount) => {
+            saveConnectedAccount(acc);
+          });
+          const freshAccounts = getStoredAccounts(currentWorkspace.id);
+          setAccounts(freshAccounts);
+          setFeedback(`✓ Successfully synced ${data.accounts.length} live social channels from Ayrshare! (${data.activeSocialAccounts.join(", ")})`);
+          if (onAccountConnected) onAccountConnected();
+        } else {
+          setFeedback("Ayrshare reports 0 active social accounts linked yet. Click 'Launch Real Social Connect (SSO)' above to link your accounts first.");
+        }
+      } else {
+        setFeedback(`⚠️ Ayrshare Sync error: ${data.error || "Failed to sync accounts."}`);
+      }
+    } catch (err: any) {
+      setFeedback(`⚠️ Failed to sync accounts: ${err.message || "Network error"}`);
+    } finally {
+      setIsSyncingAyrshare(false);
+    }
+  };
+
+  // Save Ayrshare Key and Verify
+  const handleSaveAndVerifyAyrshareKey = async () => {
+    const clean = ayrshareInputKey.trim();
+    if (!clean) {
+      setFeedback("⚠️ Please enter a valid Ayrshare API key.");
+      return;
+    }
+
+    setVerifyingPlatform("ayrshare");
+    setFeedback(null);
+
+    try {
+      const res = await fetch("/api/social/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: "ayrshare",
+          credentials: { ayrshareApiKey: clean },
+        }),
+      });
+      const data: VerificationResult = await res.json();
+      setVerificationFeedback(data);
+
+      if (data.ok) {
+        updateCredential("ayrshareApiKey", clean);
+        setIsEditingAyrshareKey(false);
+        setFeedback(`✓ Ayrshare API key verified! Status: Active (${data.latencyMs}ms). Now click 'Sync Connected Channels' or 'Launch Real Social Connect (SSO)'.`);
+        // Auto sync after key verification
+        handleSyncAyrshare();
+      }
+    } catch (err: any) {
+      setVerificationFeedback({
+        ok: false,
+        platform: "ayrshare",
+        error: err.message || "Failed to verify Ayrshare key",
+      });
+    } finally {
+      setVerifyingPlatform(null);
+    }
+  };
+
+  // Generic direct verification for Telegram, X, etc.
   const handleVerify = async (platform: string) => {
     setVerifyingPlatform(platform);
     setVerificationFeedback(null);
@@ -93,9 +234,8 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
       setVerificationFeedback(data);
 
       if (data.ok) {
-        setFeedback(`✓ Real API connection verified for ${platform.toUpperCase()} (${data.accountHandle || data.accountName}) in ${data.latencyMs}ms!`);
+        setFeedback(`✓ Live connection verified for ${platform.toUpperCase()} (${data.accountHandle || data.accountName}) in ${data.latencyMs}ms!`);
 
-        // If verified, update or add to connected accounts fleet
         const platformId = platform as PlatformId;
         const newOrUpdatedAcc: ConnectedAccount = {
           id: `acc-${platform}-${Date.now()}`,
@@ -145,7 +285,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         setAccounts((prev) =>
           prev.map((a) => (a.id === acc.id ? { ...a, latencyMs: data.latencyMs || 35, status: "active" } : a))
         );
-        setFeedback(`✓ Ping successful for ${acc.accountHandle}: ${data.latencyMs}ms response time.`);
+        setFeedback(`✓ Live ping successful for ${acc.accountHandle}: ${data.latencyMs}ms latency.`);
       } else {
         setFeedback(`⚠️ Ping returned: ${data.error || "No active credentials configured for live check"}`);
       }
@@ -158,7 +298,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   const handleDisconnect = (id: string) => {
     disconnectAccount(currentWorkspace.id, id);
     setAccounts(getStoredAccounts(currentWorkspace.id));
-    setFeedback("Account removed from active management.");
+    setFeedback("Account disconnected from active management.");
     if (onAccountConnected) onAccountConnected();
   };
 
@@ -169,6 +309,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
       delete updated.telegramChatId;
     } else if (platform === "ayrshare") {
       delete updated.ayrshareApiKey;
+      setAyrshareInputKey("");
     } else if (platform === "x") {
       delete updated.twitterBearerToken;
       delete updated.twitterApiKey;
@@ -182,14 +323,6 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
     setCredentials(updated);
     saveStoredRealCredentials(currentWorkspace.id, updated);
     setFeedback(`Cleared credentials for ${platform.toUpperCase()}`);
-  };
-
-  const handleConnectOAuth = (platform: PlatformId) => {
-    const url = buildOAuthAuthorizationUrl({
-      platform,
-      workspaceId: currentWorkspace.id,
-    });
-    window.location.href = url;
   };
 
   return (
@@ -211,7 +344,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-600 mt-1">
-                Link and authenticate your real social media accounts with live API keys, Bot tokens, or unified cross-platform gateways.
+                Link and authenticate real social media accounts with Ayrshare SSO, Telegram Bots, and live API keys.
               </p>
             </div>
           </div>
@@ -290,18 +423,18 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
             <Lock className="w-3.5 h-3.5" />
           </div>
           <div>
-            <span className="font-bold text-slate-900">Enterprise Credential Isolation: </span>
+            <span className="font-bold text-slate-900">Authentic Social Gateway Architecture: </span>
             <span className="text-slate-600">
-              API tokens and Bot keys are stored securely in your private session storage. Zero keys are exposed to third-party trackers.
+              Live OAuth 2.0 authentication powered by Ayrshare SSO (`social-media-api`) and native Telegram bots. Zero simulated forms.
             </span>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white text-blue-700 border border-blue-200 shadow-2xs">
-            E2E ISOLATION
+            AYRSHARE SSO
           </span>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-            LIVE DISPATCH
+            LIVE BROADCAST
           </span>
         </div>
       </div>
@@ -309,18 +442,34 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
       {/* Integration Options Navigation Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <button
-          onClick={() => setActiveTab("oauth")}
+          onClick={() => setActiveTab("ayrshare")}
           className={cn(
             "tap-press min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-2xs",
-            activeTab === "oauth"
+            activeTab === "ayrshare"
               ? "bg-blue-600 text-white shadow-sm shadow-blue-500/20"
               : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50"
           )}
         >
           <Globe className="w-4 h-4" />
-          <span>1-Click Social Connect (OAuth 2.0)</span>
+          <span>Ayrshare Real Social Connect (SSO)</span>
           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500 text-white font-bold uppercase tracking-wider">
-            Fast
+            Primary
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("telegram")}
+          className={cn(
+            "tap-press min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-2xs",
+            activeTab === "telegram"
+              ? "bg-blue-600 text-white shadow-sm shadow-blue-500/20"
+              : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50"
+          )}
+        >
+          <Send className="w-4 h-4" />
+          <span>Direct Telegram Bot (Instant)</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500 text-white font-bold uppercase tracking-wider">
+            Free
           </span>
         </button>
 
@@ -334,20 +483,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
           )}
         >
           <Zap className="w-4 h-4" />
-          <span>Direct Platform API Keys (Telegram, X, LinkedIn, Meta)</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("ayrshare")}
-          className={cn(
-            "tap-press min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-2xs",
-            activeTab === "ayrshare"
-              ? "bg-blue-600 text-white shadow-sm shadow-blue-500/20"
-              : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50"
-          )}
-        >
-          <Server className="w-4 h-4" />
-          <span>Ayrshare Unified API (1-Click Multi-Network)</span>
+          <span>Direct Developer Tokens (X, LinkedIn, Meta)</span>
         </button>
 
         <button
@@ -364,241 +500,372 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         </button>
       </div>
 
-      {/* TAB 0: 1-Click Social Connect (OAuth 2.0) */}
-      {activeTab === "oauth" && (
+      {/* TAB 0: Ayrshare Real Social Connect (SSO) */}
+      {activeTab === "ayrshare" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
-                <Sparkles className="w-4 h-4 text-blue-600" />
-                <span>Direct Browser-to-Social OAuth Redirect Flow</span>
+          {/* Ayrshare Hero Header */}
+          <GlassPanel className="p-6 border-blue-200 bg-gradient-to-br from-white via-blue-50/40 to-indigo-50/30 space-y-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="space-y-2 max-w-2xl">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold tracking-wider uppercase font-mono">
+                    Official Ayrshare Social Gateway
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                    Multi-Network OAuth 2.0
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+                  Connect Real Social Media Accounts in 1 Click
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  OmniSocial integrates directly with Ayrshare&apos;s Social Media API (`social-media-api`). Launch the secure SSO session to authenticate Twitter/X, LinkedIn, Facebook, Instagram, YouTube, TikTok, and Pinterest through official provider OAuth dialogs, then sync your live handles and follower data.
+                </p>
               </div>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Click <strong>Connect</strong> below to redirect to the official social provider authorization screen, authenticate permissions, and return automatically to Omnisocial.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] font-mono text-blue-800 bg-white/80 px-2.5 py-1 rounded-lg border border-blue-200">
-                OAuth 2.0 PKCE · Zero Token Exposure
-              </span>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(
-              [
-                "x",
-                "linkedin",
-                "instagram",
-                "facebook",
-                "tiktok",
-                "youtube",
-                "telegram",
-                "threads",
-              ] as PlatformId[]
-            ).map((pId) => {
-              const cfg = OAUTH_PLATFORM_CONFIGS[pId];
-              const connectedAcc = accounts.find((a) => a.platform === pId);
-
-              return (
-                <GlassPanel
-                  key={pId}
-                  className="p-5 border-slate-200 bg-white flex flex-col justify-between space-y-4 hover:border-slate-300 transition-all shadow-xs"
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
+                <button
+                  onClick={() => handleLaunchAyrshareSSO()}
+                  disabled={isLaunchingSSO}
+                  className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
                 >
-                  <div className="space-y-3">
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-base shadow-sm shrink-0"
-                          style={{ backgroundColor: cfg.brandColor }}
-                        >
-                          {pId === "x" && "𝕏"}
-                          {pId === "linkedin" && "in"}
-                          {pId === "instagram" && "IG"}
-                          {pId === "facebook" && "f"}
-                          {pId === "tiktok" && "TT"}
-                          {pId === "youtube" && "▶"}
-                          {pId === "telegram" && "✈"}
-                          {pId === "threads" && "@"}
-                        </div>
-                        <div>
-                          <div className="font-bold text-sm text-slate-900 leading-tight">
-                            {cfg.name}
-                          </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            {connectedAcc ? (
-                              <span className="text-emerald-700 font-semibold flex items-center gap-1 font-mono">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                {connectedAcc.accountHandle}
-                              </span>
-                            ) : (
-                              "Not linked yet"
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                  <RefreshCw className={cn("w-4 h-4", isLaunchingSSO && "animate-spin")} />
+                  <span>Launch Real Social Connect (SSO)</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
 
-                      {connectedAcc ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold uppercase font-mono">
-                          Active
+                <button
+                  onClick={handleSyncAyrshare}
+                  disabled={isSyncingAyrshare}
+                  className="px-5 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-300 shadow-xs transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                >
+                  <RefreshCw className={cn("w-4 h-4 text-blue-600", isSyncingAyrshare && "animate-spin")} />
+                  <span>↻ Sync Connected Channels</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Ayrshare API Key Configuration Drawer / Inline */}
+            <div className="pt-4 border-t border-slate-200/80">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-100/70 text-blue-700">
+                    <Key className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-900">Ayrshare API Key Status:</span>
+                      {credentials.ayrshareApiKey && !isEditingAyrshareKey ? (
+                        <span className="text-[11px] font-mono text-emerald-700 font-bold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          Configured (••••••••{credentials.ayrshareApiKey.slice(-4)})
                         </span>
                       ) : (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-medium">
-                          Available
+                        <span className="text-[11px] text-amber-600 font-semibold">
+                          Required for live linking
                         </span>
                       )}
                     </div>
-
-                    {/* Permission scopes checklist */}
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-[11px] text-slate-600">
-                      <div className="font-semibold text-slate-800 text-[10px] uppercase tracking-wider">
-                        Authorized Permissions:
-                      </div>
-                      <div className="space-y-1">
-                        {cfg.permissionsDescription.slice(0, 2).map((desc, i) => (
-                          <div key={i} className="flex items-start gap-1.5 leading-snug">
-                            <span className="text-emerald-600 font-bold">✓</span>
-                            <span>{desc}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Used to generate link sessions and dispatch real posts. Free tier available.
+                    </p>
                   </div>
+                </div>
 
-                  {/* Connect CTA Button */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {credentials.ayrshareApiKey && !isEditingAyrshareKey ? (
                     <button
-                      onClick={() => handleConnectOAuth(pId)}
-                      aria-label={`Connect or authenticate with ${cfg.name}`}
-                      style={{
-                        backgroundColor: connectedAcc ? "#F8FAFC" : cfg.brandColor,
-                        color: connectedAcc ? "#1E293B" : "#FFFFFF",
-                        borderColor: connectedAcc ? "#E2E8F0" : cfg.brandColor,
-                      }}
-                      className={cn(
-                        "tap-press min-h-[44px] flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border shadow-2xs hover:opacity-95 focus-visible:ring-2 focus-visible:ring-blue-500"
-                      )}
+                      onClick={() => setIsEditingAyrshareKey(true)}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-semibold px-3 py-1.5 rounded-lg border border-blue-200 bg-white"
                     >
-                      <span>{connectedAcc ? `Reconnect ${cfg.name}` : `Connect with ${cfg.name}`}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      Update Key
+                    </button>
+                  ) : null}
+
+                  <a
+                    href="https://www.ayrshare.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-slate-600 hover:text-slate-900 font-semibold px-3 py-1.5 rounded-lg border border-slate-200 bg-white flex items-center gap-1.5"
+                  >
+                    <span>Get Free Key</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
+                  </a>
+                </div>
+              </div>
+
+              {/* Edit Ayrshare Key Form */}
+              {(!credentials.ayrshareApiKey || isEditingAyrshareKey) && (
+                <div className="mt-4 p-4 rounded-xl bg-white border border-slate-200 space-y-3 animate-in fade-in">
+                  <label className="text-xs font-bold text-slate-800 block">
+                    Paste your Ayrshare API Key from ayrshare.com
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showTokens.ayrshare ? "text" : "password"}
+                        placeholder="Paste Ayrshare API Key (e.g. 5D9F2-XXXX-XXXX-XXXX)"
+                        value={ayrshareInputKey}
+                        onChange={(e) => setAyrshareInputKey(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleShowToken("ayrshare")}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                      >
+                        {showTokens.ayrshare ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleSaveAndVerifyAyrshareKey}
+                      disabled={verifyingPlatform === "ayrshare" || !ayrshareInputKey.trim()}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2"
+                    >
+                      <RefreshCw className={cn("w-3.5 h-3.5", verifyingPlatform === "ayrshare" && "animate-spin")} />
+                      <span>Verify &amp; Save Key</span>
                     </button>
 
-                    {connectedAcc && (
+                    {credentials.ayrshareApiKey && (
                       <button
-                        onClick={() => handleDisconnect(connectedAcc.id)}
-                        aria-label={`Disconnect ${cfg.name}`}
-                        className="tap-press min-h-[44px] px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition-colors"
+                        onClick={() => setIsEditingAyrshareKey(false)}
+                        className="px-3 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-700 font-semibold"
                       >
-                        Unlink
+                        Cancel
                       </button>
                     )}
                   </div>
-                </GlassPanel>
-              );
-            })}
+                </div>
+              )}
+            </div>
+          </GlassPanel>
+
+          {/* Supported Platforms Grid */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Ayrshare Supported Social Networks
+              </h4>
+              <span className="text-[11px] text-slate-500">
+                Click any network to link directly through Ayrshare SSO
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {(
+                [
+                  "x",
+                  "linkedin",
+                  "instagram",
+                  "facebook",
+                  "tiktok",
+                  "youtube",
+                  "threads",
+                  "telegram",
+                ] as PlatformId[]
+              ).map((pId) => {
+                const cfg = OAUTH_PLATFORM_CONFIGS[pId];
+                const connectedAcc = accounts.find((a) => a.platform === pId);
+
+                return (
+                  <GlassPanel
+                    key={pId}
+                    className="p-4 border-slate-200 bg-white flex flex-col justify-between space-y-3 hover:border-slate-300 transition-all shadow-2xs"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0"
+                            style={{ backgroundColor: cfg.brandColor }}
+                          >
+                            {pId === "x" && "𝕏"}
+                            {pId === "linkedin" && "in"}
+                            {pId === "instagram" && "IG"}
+                            {pId === "facebook" && "f"}
+                            {pId === "tiktok" && "TT"}
+                            {pId === "youtube" && "▶"}
+                            {pId === "threads" && "@"}
+                            {pId === "telegram" && "✈"}
+                          </div>
+                          <div>
+                            <div className="font-bold text-xs text-slate-900 leading-tight">
+                              {cfg.name}
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              {connectedAcc ? (
+                                <span className="text-emerald-700 font-semibold flex items-center gap-1 font-mono">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  {connectedAcc.accountHandle}
+                                </span>
+                              ) : (
+                                "Ready to link"
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {connectedAcc ? (
+                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold uppercase font-mono">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-medium">
+                            SSO Ready
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        {cfg.permissionsDescription[0]}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                      {connectedAcc ? (
+                        <>
+                          <button
+                            onClick={() => handleTestPing(connectedAcc)}
+                            disabled={pingingId === connectedAcc.id}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200 transition-colors flex items-center justify-center gap-1"
+                          >
+                            <RefreshCw className={cn("w-3 h-3 text-blue-600", pingingId === connectedAcc.id && "animate-spin")} />
+                            <span>Ping</span>
+                          </button>
+                          <button
+                            onClick={() => handleDisconnect(connectedAcc.id)}
+                            className="py-1.5 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold border border-rose-200 transition-colors"
+                          >
+                            Unlink
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (pId === "telegram") {
+                              setActiveTab("telegram");
+                            } else {
+                              handleLaunchAyrshareSSO(pId);
+                            }
+                          }}
+                          className="w-full py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <span>Connect {cfg.name}</span>
+                          <ArrowRight className="w-3 h-3 text-slate-400" />
+                        </button>
+                      )}
+                    </div>
+                  </GlassPanel>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      {/* TAB 1: Direct Platform Credentials */}
-      {activeTab === "direct" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* 1. Telegram Bot (Instant, Free, No App Review) */}
-            <GlassPanel className="p-5 border-slate-200 space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-sky-50 text-sky-600 border border-sky-200">
-                    <Send className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-slate-900">Telegram Channel / Group</h3>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">
-                        Zero Approvals Needed
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Direct broadcast messages to any public channel or group via BotFather.
-                    </p>
-                  </div>
+      {/* TAB 1: Direct Telegram Bot */}
+      {activeTab === "telegram" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <GlassPanel className="p-6 border-slate-200 bg-white space-y-5">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-sky-50 text-sky-600 border border-sky-200">
+                  <Send className="w-6 h-6" />
                 </div>
-                <PlatformBadge platform="telegram" size="sm" showLabel={false} />
-              </div>
-
-              {/* Step-by-step instructions */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 text-blue-600" />
-                  <span>How to connect in 60 seconds:</span>
-                </div>
-                <ol className="list-decimal pl-4 space-y-0.5 text-[11px] text-slate-600">
-                  <li>Open Telegram and message <strong>@BotFather</strong> to create a new bot and get your token.</li>
-                  <li>Add your new bot as an <strong>Administrator</strong> to your target Channel or Group.</li>
-                  <li>Enter the Bot Token and your Channel username below (e.g. <code>@MyBrandAlerts</code>).</li>
-                </ol>
-              </div>
-
-              <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Bot Token (from @BotFather)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showTokens.telegram ? "text" : "password"}
-                      placeholder="e.g. 1234567890:ABCdefGhIJKlmNoPQRstuvwxYZ"
-                      value={credentials.telegramBotToken || ""}
-                      onChange={(e) => updateCredential("telegramBotToken", e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowToken("telegram")}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                    >
-                      {showTokens.telegram ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-slate-900">Telegram Channel &amp; Group Bot</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                      100% Free · Zero App Review
+                    </span>
                   </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Broadcast instant updates to your Telegram channels and community groups via Telegram Bot API.
+                  </p>
                 </div>
+              </div>
+              <PlatformBadge platform="telegram" size="md" showLabel={false} />
+            </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Target Channel / Chat ID
-                  </label>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-2">
+              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-blue-600" />
+                <span>How to connect in 60 seconds:</span>
+              </div>
+              <ol className="list-decimal pl-5 space-y-1 text-slate-600">
+                <li>Open Telegram and message <strong>@BotFather</strong> to create a new bot and copy your Bot Token.</li>
+                <li>Add your new bot as an <strong>Administrator</strong> to your target Channel or Group.</li>
+                <li>Enter the Bot Token and your Channel username below (e.g. <code>@MyBrandChannel</code>) and click Test &amp; Connect.</li>
+              </ol>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Telegram Bot Token (from @BotFather)
+                </label>
+                <div className="relative">
                   <input
-                    type="text"
-                    placeholder="e.g. @MyChannelUsername or -100123456789"
-                    value={credentials.telegramChatId || ""}
-                    onChange={(e) => updateCredential("telegramChatId", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
+                    type={showTokens.telegram ? "text" : "password"}
+                    placeholder="e.g. 1234567890:ABCdefGhIJKlmNoPQRstuvwxYZ"
+                    value={credentials.telegramBotToken || ""}
+                    onChange={(e) => updateCredential("telegramBotToken", e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
                   />
+                  <button
+                    type="button"
+                    onClick={() => toggleShowToken("telegram")}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showTokens.telegram ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-between border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => handleClearCredentials("telegram")}
-                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Clear</span>
-                </button>
-
-                <button
-                  onClick={() => handleVerify("telegram")}
-                  disabled={verifyingPlatform === "telegram" || !credentials.telegramBotToken}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-                >
-                  <RefreshCw className={cn("w-3.5 h-3.5", verifyingPlatform === "telegram" && "animate-spin")} />
-                  <span>Test &amp; Connect Telegram</span>
-                </button>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Target Channel / Chat ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. @MyChannelUsername or -100123456789"
+                  value={credentials.telegramChatId || ""}
+                  onChange={(e) => updateCredential("telegramChatId", e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
+                />
               </div>
-            </GlassPanel>
+            </div>
 
-            {/* 2. Twitter / X API v2 */}
+            <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => handleClearCredentials("telegram")}
+                className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+
+              <button
+                onClick={() => handleVerify("telegram")}
+                disabled={verifyingPlatform === "telegram" || !credentials.telegramBotToken}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-2"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", verifyingPlatform === "telegram" && "animate-spin")} />
+                <span>Test &amp; Connect Telegram</span>
+              </button>
+            </div>
+          </GlassPanel>
+        </div>
+      )}
+
+      {/* TAB 2: Direct Developer Tokens */}
+      {activeTab === "direct" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 1. Twitter / X API v2 */}
             <GlassPanel className="p-5 border-slate-200 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2.5">
@@ -606,84 +873,46 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                     <Key className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-slate-900">X / Twitter API v2</h3>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-300">
-                        OAuth 2.0 / Bearer
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Publish posts, read mentions, and monitor user timelines.
-                    </p>
+                    <h3 className="font-bold text-sm text-slate-900">X / Twitter API v2</h3>
+                    <p className="text-xs text-slate-500">Developer Portal Bearer Token</p>
                   </div>
                 </div>
                 <PlatformBadge platform="x" size="sm" showLabel={false} />
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-800">Developer Portal Scopes Required:</span>
-                  <a
-                    href="https://developer.twitter.com/en/portal/dashboard"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline flex items-center gap-1 text-[11px]"
-                  >
-                    <span>Developer Portal</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-                <p className="text-[11px] text-slate-500 font-mono">
-                  tweet.read, tweet.write, users.read
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    User Access Token or Bearer Token
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showTokens.x ? "text" : "password"}
-                      placeholder="Paste your Twitter API User Bearer/Access Token..."
-                      value={credentials.twitterBearerToken || ""}
-                      onChange={(e) => updateCredential("twitterBearerToken", e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowToken("x")}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                    >
-                      {showTokens.x ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  User Bearer/Access Token
+                </label>
+                <input
+                  type={showTokens.x ? "text" : "password"}
+                  placeholder="Paste Bearer Token..."
+                  value={credentials.twitterBearerToken || ""}
+                  onChange={(e) => updateCredential("twitterBearerToken", e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 font-mono"
+                />
               </div>
 
               <div className="pt-2 flex items-center justify-between border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => handleClearCredentials("x")}
-                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1"
+                  className="text-xs text-slate-400 hover:text-rose-600"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Clear</span>
+                  Clear
                 </button>
-
                 <button
                   onClick={() => handleVerify("x")}
                   disabled={verifyingPlatform === "x" || !credentials.twitterBearerToken}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center gap-1.5"
                 >
                   <RefreshCw className={cn("w-3.5 h-3.5", verifyingPlatform === "x" && "animate-spin")} />
-                  <span>Test &amp; Connect X</span>
+                  <span>Test &amp; Connect</span>
                 </button>
               </div>
             </GlassPanel>
 
-            {/* 3. LinkedIn REST API */}
+            {/* 2. LinkedIn REST API */}
             <GlassPanel className="p-5 border-slate-200 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2.5">
@@ -691,71 +920,36 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                     <Key className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-slate-900">LinkedIn REST API</h3>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                        Member &amp; Organization
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Publish posts to personal profiles and organization company pages.
-                    </p>
+                    <h3 className="font-bold text-sm text-slate-900">LinkedIn REST API</h3>
+                    <p className="text-xs text-slate-500">OAuth Access Token</p>
                   </div>
                 </div>
                 <PlatformBadge platform="linkedin" size="sm" showLabel={false} />
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-800">Required Scopes:</span>
-                  <a
-                    href="https://www.linkedin.com/developers/apps"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline flex items-center gap-1 text-[11px]"
-                  >
-                    <span>LinkedIn Developers</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-                <p className="text-[11px] text-slate-500 font-mono">
-                  w_member_social, openid, profile, email
-                </p>
-              </div>
-
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    LinkedIn Access Token
+                    Access Token
                   </label>
-                  <div className="relative">
-                    <input
-                      type={showTokens.linkedin ? "text" : "password"}
-                      placeholder="Paste your LinkedIn OAuth 2.0 Access Token..."
-                      value={credentials.linkedinAccessToken || ""}
-                      onChange={(e) => updateCredential("linkedinAccessToken", e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowToken("linkedin")}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                    >
-                      {showTokens.linkedin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
+                  <input
+                    type={showTokens.linkedin ? "text" : "password"}
+                    placeholder="LinkedIn Token..."
+                    value={credentials.linkedinAccessToken || ""}
+                    onChange={(e) => updateCredential("linkedinAccessToken", e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 font-mono"
+                  />
                 </div>
-
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Author URN
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. urn:li:person:YOUR_ID or urn:li:organization:YOUR_ORG_ID"
+                    placeholder="urn:li:person:YOUR_ID"
                     value={credentials.linkedinAuthorUrn || ""}
                     onChange={(e) => updateCredential("linkedinAuthorUrn", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 font-mono"
                   />
                 </div>
               </div>
@@ -764,24 +958,22 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleClearCredentials("linkedin")}
-                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1"
+                  className="text-xs text-slate-400 hover:text-rose-600"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Clear</span>
+                  Clear
                 </button>
-
                 <button
                   onClick={() => handleVerify("linkedin")}
                   disabled={verifyingPlatform === "linkedin" || !credentials.linkedinAccessToken}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center gap-1.5"
                 >
                   <RefreshCw className={cn("w-3.5 h-3.5", verifyingPlatform === "linkedin" && "animate-spin")} />
-                  <span>Test &amp; Connect LinkedIn</span>
+                  <span>Test &amp; Connect</span>
                 </button>
               </div>
             </GlassPanel>
 
-            {/* 4. Meta / Facebook Pages & Instagram */}
+            {/* 3. Meta Graph API */}
             <GlassPanel className="p-5 border-slate-200 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2.5">
@@ -789,71 +981,36 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                     <Key className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-slate-900">Meta Graph API</h3>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
-                        Facebook &amp; Instagram
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Publish posts to Facebook Business Pages and linked Instagram accounts.
-                    </p>
+                    <h3 className="font-bold text-sm text-slate-900">Meta Graph API</h3>
+                    <p className="text-xs text-slate-500">Facebook Page Access Token</p>
                   </div>
                 </div>
                 <PlatformBadge platform="facebook" size="sm" showLabel={false} />
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-800">Token Generator:</span>
-                  <a
-                    href="https://developers.facebook.com/tools/explorer/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline flex items-center gap-1 text-[11px]"
-                  >
-                    <span>Graph API Explorer</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-                <p className="text-[11px] text-slate-500 font-mono">
-                  pages_manage_posts, pages_read_engagement
-                </p>
-              </div>
-
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Page Access Token
+                    Page Token
                   </label>
-                  <div className="relative">
-                    <input
-                      type={showTokens.facebook ? "text" : "password"}
-                      placeholder="Paste your Meta Page Access Token..."
-                      value={credentials.metaPageAccessToken || ""}
-                      onChange={(e) => updateCredential("metaPageAccessToken", e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowToken("facebook")}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                    >
-                      {showTokens.facebook ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
+                  <input
+                    type={showTokens.facebook ? "text" : "password"}
+                    placeholder="Page Access Token..."
+                    value={credentials.metaPageAccessToken || ""}
+                    onChange={(e) => updateCredential("metaPageAccessToken", e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 font-mono"
+                  />
                 </div>
-
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Facebook Page ID
+                    Page ID
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. 109283746501928"
                     value={credentials.metaPageId || ""}
                     onChange={(e) => updateCredential("metaPageId", e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:bg-white font-mono"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 font-mono"
                   />
                 </div>
               </div>
@@ -862,19 +1019,17 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleClearCredentials("facebook")}
-                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1"
+                  className="text-xs text-slate-400 hover:text-rose-600"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Clear</span>
+                  Clear
                 </button>
-
                 <button
                   onClick={() => handleVerify("facebook")}
                   disabled={verifyingPlatform === "facebook" || !credentials.metaPageAccessToken}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center gap-1.5"
                 >
                   <RefreshCw className={cn("w-3.5 h-3.5", verifyingPlatform === "facebook" && "animate-spin")} />
-                  <span>Test &amp; Connect Meta</span>
+                  <span>Test &amp; Connect</span>
                 </button>
               </div>
             </GlassPanel>
@@ -882,79 +1037,9 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         </div>
       )}
 
-      {/* TAB 2: Ayrshare Unified API */}
-      {activeTab === "ayrshare" && (
-        <GlassPanel className="p-6 border-slate-200 bg-white space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 text-indigo-700 shadow-xs">
-                <Server className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-slate-900">Ayrshare Unified Social API</h3>
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
-                    Recommended for SaaS
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 mt-1">
-                  1 single API key automatically connects and publishes to X, LinkedIn, Facebook, Instagram, TikTok, YouTube, and Threads without requiring individual app reviews.
-                </p>
-              </div>
-            </div>
-
-            <a
-              href="https://app.ayrshare.com"
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 border border-slate-300 self-start md:self-auto"
-            >
-              <span>Get Ayrshare API Key</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-            <label className="text-xs font-bold text-slate-800 block">
-              Enter your Ayrshare API Key
-            </label>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type={showTokens.ayrshare ? "text" : "password"}
-                  placeholder="Paste Ayrshare API Key (e.g. 5D9F2-XXXX-XXXX-XXXX)"
-                  value={credentials.ayrshareApiKey || ""}
-                  onChange={(e) => updateCredential("ayrshareApiKey", e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl pl-3 pr-9 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 font-mono shadow-2xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => toggleShowToken("ayrshare")}
-                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
-                >
-                  {showTokens.ayrshare ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-
-              <button
-                onClick={() => handleVerify("ayrshare")}
-                disabled={verifyingPlatform === "ayrshare" || !credentials.ayrshareApiKey}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all flex items-center justify-center gap-2 active:scale-95"
-              >
-                <RefreshCw className={cn("w-4 h-4", verifyingPlatform === "ayrshare" && "animate-spin")} />
-                <span>Verify Ayrshare Key</span>
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              When configured, the Content Studio Composer will automatically dispatch live cross-platform broadcasts through your Ayrshare account.
-            </p>
-          </div>
-        </GlassPanel>
-      )}
-
       {/* TAB 3: .env.local Configuration Snippet */}
       {activeTab === "env" && (
-        <GlassPanel className="p-6 border-slate-200 bg-white space-y-4">
+        <GlassPanel className="p-6 border-slate-200 bg-white space-y-4 animate-in fade-in duration-200">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
               <Terminal className="w-5 h-5" />
@@ -964,23 +1049,21 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 Server Environment Variables Configuration
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Prefer storing API keys in your server environment rather than the browser? Add these keys to your <code>.env.local</code> file in the project root:
+                Prefer storing API keys in your server environment (Vercel Project Settings) rather than the browser? Add these variables:
               </p>
             </div>
           </div>
 
           <div className="p-4 bg-slate-900 rounded-2xl text-slate-100 font-mono text-xs overflow-x-auto shadow-inner space-y-1.5 leading-relaxed">
-            <div className="text-slate-400"># OmniSocial Studio Real API Credentials</div>
-            <div>AYRSHARE_API_KEY=&quot;&quot;</div>
-            <div className="text-slate-400"># Direct Telegram Bot</div>
+            <div className="text-slate-400"># OmniSocial Ayrshare Gateway Key (Recommended)</div>
+            <div>AYRSHARE_API_KEY=&quot;your_ayrshare_api_key_here&quot;</div>
+            <div className="text-slate-400 pt-2"># Direct Telegram Bot</div>
             <div>TELEGRAM_BOT_TOKEN=&quot;&quot;</div>
             <div>TELEGRAM_CHAT_ID=&quot;@YourChannel&quot;</div>
-            <div className="text-slate-400"># Direct Twitter / X API v2</div>
+            <div className="text-slate-400 pt-2"># Direct Developer Tokens</div>
             <div>TWITTER_BEARER_TOKEN=&quot;&quot;</div>
-            <div className="text-slate-400"># Direct LinkedIn API</div>
             <div>LINKEDIN_ACCESS_TOKEN=&quot;&quot;</div>
             <div>LINKEDIN_AUTHOR_URN=&quot;urn:li:person:YOUR_ID&quot;</div>
-            <div className="text-slate-400"># Direct Meta Graph API</div>
             <div>META_PAGE_ACCESS_TOKEN=&quot;&quot;</div>
             <div>META_PAGE_ID=&quot;&quot;</div>
           </div>
@@ -995,7 +1078,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
               Active Connected Channels for {currentWorkspace.name}
             </h3>
             <p className="text-xs text-slate-500">
-              Accounts authorized to publish content and monitor engagement.
+              Live accounts authorized to publish content and monitor real engagement.
             </p>
           </div>
         </div>
@@ -1007,7 +1090,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
             </div>
             <h4 className="font-bold text-sm text-slate-900">No Social Accounts Linked Yet</h4>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-              Select an option above (like Telegram or Ayrshare) and enter your API keys to link your live accounts.
+              Click &quot;Launch Real Social Connect (SSO)&quot; or connect a Telegram Bot above to authenticate your real accounts.
             </p>
           </GlassPanel>
         ) : (
@@ -1018,7 +1101,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                   <div className="flex items-center gap-2.5">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={acc.accountAvatar}
+                      src={acc.accountAvatar || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80"}
                       alt={acc.accountName}
                       className="w-10 h-10 rounded-xl object-cover border border-slate-200"
                     />

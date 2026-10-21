@@ -96,7 +96,7 @@ export async function publishToTelegram(
 export async function verifyAyrshare(apiKey: string): Promise<VerificationResult> {
   const start = Date.now();
   try {
-    const res = await fetch("https://app.ayrshare.com/api/profiles", {
+    const res = await fetch("https://api.ayrshare.com/api/user", {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
@@ -104,7 +104,7 @@ export async function verifyAyrshare(apiKey: string): Promise<VerificationResult
     const data = await res.json();
     const latencyMs = Date.now() - start;
 
-    if (data.status === "error" || data.error) {
+    if (!res.ok || data.status === "error" || data.error) {
       return {
         ok: false,
         platform: "ayrshare",
@@ -113,7 +113,7 @@ export async function verifyAyrshare(apiKey: string): Promise<VerificationResult
       };
     }
 
-    const activePlatforms = data.activeSocialAccounts || data.profiles || [];
+    const activePlatforms = data.activeSocialAccounts || [];
     return {
       ok: true,
       platform: "ayrshare",
@@ -121,7 +121,7 @@ export async function verifyAyrshare(apiKey: string): Promise<VerificationResult
       accountHandle: `@${data.profileKey || "workspace"}`,
       details: {
         connectedPlatforms: activePlatforms,
-        quota: data.quota || "Standard",
+        quota: data.quota || "Active",
       },
       latencyMs,
     };
@@ -143,7 +143,7 @@ export async function publishToAyrshare(
 ): Promise<PublishResult[]> {
   const now = new Date().toISOString();
   try {
-    const res = await fetch("https://app.ayrshare.com/api/post", {
+    const res = await fetch("https://api.ayrshare.com/api/post", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

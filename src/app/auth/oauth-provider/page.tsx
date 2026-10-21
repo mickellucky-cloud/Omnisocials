@@ -1,20 +1,11 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PlatformId, WorkspaceId } from "@/types";
 import { OAUTH_PLATFORM_CONFIGS } from "@/lib/social/oauth";
-import {
-  ShieldCheck,
-  Lock,
-  CheckCircle2,
-  AlertCircle,
-  ArrowRight,
-  ExternalLink,
-  ChevronDown,
-  Info,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ShieldCheck, Lock, ArrowRight, ExternalLink, RefreshCw, AlertCircle } from "lucide-react";
+import { getStoredRealCredentials } from "@/lib/social/credentials";
 
 function OAuthConsentContent() {
   const searchParams = useSearchParams();
@@ -22,270 +13,120 @@ function OAuthConsentContent() {
 
   const platform = (searchParams.get("platform") || "x") as PlatformId;
   const workspaceId = (searchParams.get("workspace") || "acme-cloud") as WorkspaceId;
-  const state = searchParams.get("state") || "";
-
   const config = OAUTH_PLATFORM_CONFIGS[platform] || OAUTH_PLATFORM_CONFIGS.x;
 
-  const [accountHandle, setAccountHandle] = useState(
-    searchParams.get("handle") || `@${workspaceId}`
-  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [isAuthorizing, setIsAuthorizing] = useState(false);
-  const [selectedScopes, setSelectedScopes] = useState<string[]>(config.defaultScopes);
+  useEffect(() => {
+    // Attempt to create a real Ayrshare Link Session for authentic multi-network OAuth
+    async function initRealLinkSession() {
+      try {
+        const creds = getStoredRealCredentials(workspaceId);
+        const res = await fetch("/api/social/ayrshare/link-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey: creds.ayrshareApiKey,
+            allowedSocial: platform === "x" ? ["twitter"] : [platform],
+            redirectUrl: `${window.location.origin}/?tab=social_accounts&ayrshare_linked=true`,
+          }),
+        });
 
-  const handleAuthorize = () => {
-    setIsAuthorizing(true);
-    const authCode = `oauth_code_${platform}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    setTimeout(() => {
-      const callbackUrl = `/auth/callback?platform=${platform}&workspace=${workspaceId}&code=${authCode}&handle=${encodeURIComponent(
-        accountHandle
-      )}&state=${encodeURIComponent(state)}`;
-      router.push(callbackUrl);
-    }, 700);
-  };
-
-  const handleCancel = () => {
-    router.push(`/?tab=social_accounts&cancelled=${platform}`);
-  };
-
-  const toggleScope = (scope: string) => {
-    if (selectedScopes.includes(scope)) {
-      setSelectedScopes(selectedScopes.filter((s) => s !== scope));
-    } else {
-      setSelectedScopes([...selectedScopes, scope]);
+        const data = await res.json();
+        if (data.ok && data.url) {
+          // Redirect directly to the real Ayrshare SSO OAuth URL
+          window.location.href = data.url;
+        } else {
+          setIsLoading(false);
+          setError(
+            data.error ||
+              "Ayrshare API Key is required to launch real social OAuth. Please configure your key in Social Accounts settings."
+          );
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        setError(err.message || "Failed to initialize secure social linking session.");
+      }
     }
-  };
 
-  // Provider-specific visual styling
-  const isDarkBranded = platform === "x" || platform === "threads";
-  const isLinkedIn = platform === "linkedin";
-  const isMeta = platform === "facebook" || platform === "instagram";
-  const isTelegram = platform === "telegram";
+    initRealLinkSession();
+  }, [platform, workspaceId]);
 
   return (
-    <div
-      className={cn(
-        "min-h-screen flex flex-col items-center justify-center p-4 selection:bg-blue-500/20",
-        isDarkBranded ? "bg-[#0A0A0C] text-slate-100" : "bg-[#F3F4F6] text-slate-900"
-      )}
-    >
-      {/* Top Brand Provider Navigation Bar */}
-      <header
-        className={cn(
-          "w-full max-w-md mb-4 flex items-center justify-between px-2 text-xs",
-          isDarkBranded ? "text-slate-400" : "text-slate-500"
-        )}
-      >
-        <div className="flex items-center gap-1.5 font-semibold">
-          <Lock className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Secure OAuth 2.0 Authorization Server</span>
-        </div>
-        <span className="font-mono text-[11px]">TLS 1.3 · 256-bit</span>
-      </header>
-
-      {/* Main Authentic OAuth Card */}
-      <div
-        className={cn(
-          "w-full max-w-md rounded-2xl shadow-xl overflow-hidden border transition-all animate-in fade-in zoom-in-95 duration-200",
-          isDarkBranded
-            ? "bg-[#16181C] border-white/10 shadow-black/80"
-            : "bg-white border-slate-200 shadow-slate-200/50"
-        )}
-      >
-        {/* Social Network Provider Header Banner */}
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-blue-500/20">
+      <div className="w-full max-w-md bg-slate-800/90 border border-white/10 rounded-3xl p-8 shadow-2xl backdrop-blur-xl text-center space-y-6">
         <div
-          className={cn(
-            "p-6 pb-4 border-b flex items-center justify-between",
-            isDarkBranded ? "border-white/10 bg-black/40" : "border-slate-100 bg-slate-50/50"
-          )}
+          className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center text-white font-bold text-xl shadow-lg"
+          style={{ backgroundColor: config.brandColor }}
         >
-          <div className="flex items-center gap-3">
-            {/* Social Platform Icon Badge */}
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-md"
-              style={{ backgroundColor: config.brandColor }}
-            >
-              {platform === "x" && "𝕏"}
-              {platform === "linkedin" && "in"}
-              {platform === "instagram" && "IG"}
-              {platform === "facebook" && "f"}
-              {platform === "youtube" && "▶"}
-              {platform === "telegram" && "✈"}
-              {platform === "tiktok" && "TT"}
-              {platform === "threads" && "@"}
-            </div>
-
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-base leading-tight">{config.name}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold uppercase bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                  Verified
-                </span>
-              </div>
-              <p className={cn("text-xs mt-0.5", isDarkBranded ? "text-slate-400" : "text-slate-500")}>
-                Authorize third-party application access
-              </p>
-            </div>
-          </div>
+          {platform === "x" && "𝕏"}
+          {platform === "linkedin" && "in"}
+          {platform === "instagram" && "IG"}
+          {platform === "facebook" && "f"}
+          {platform === "youtube" && "▶"}
+          {platform === "tiktok" && "TT"}
+          {platform === "threads" && "@"}
+          {platform === "telegram" && "✈"}
         </div>
 
-        {/* Application Authorization Request */}
-        <div className="p-6 space-y-5">
-          {/* App requesting access info */}
-          <div
-            className={cn(
-              "p-3.5 rounded-xl border flex items-center gap-3",
-              isDarkBranded ? "bg-white/5 border-white/10" : "bg-blue-50/50 border-blue-100"
-            )}
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm shrink-0">
-              ⚡
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-xs truncate">Omnisocial SaaS Enterprise</span>
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-              </div>
-              <p className={cn("text-[11px] truncate", isDarkBranded ? "text-slate-400" : "text-slate-500")}>
-                Enterprise Social Media Management Platform
-              </p>
-            </div>
-          </div>
-
-          {/* Active Account Switcher */}
-          <div>
-            <label
-              className={cn("block text-[11px] font-semibold uppercase tracking-wider mb-1.5", isDarkBranded ? "text-slate-400" : "text-slate-500")}
-            >
-              Authorizing Account Profile
-            </label>
-            <div
-              className={cn(
-                "flex items-center justify-between p-3 rounded-xl border text-xs",
-                isDarkBranded ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"
-              )}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-blue-600/20 text-blue-600 font-bold flex items-center justify-center text-xs">
-                  {accountHandle.charAt(1) || "A"}
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={accountHandle}
-                    onChange={(e) => setAccountHandle(e.target.value)}
-                    className={cn(
-                      "bg-transparent font-semibold text-xs outline-none",
-                      isDarkBranded ? "text-white" : "text-slate-900"
-                    )}
-                    placeholder="@your_handle"
-                  />
-                  <div className={cn("text-[10px]", isDarkBranded ? "text-slate-400" : "text-slate-500")}>
-                    Workspace: {workspaceId}
-                  </div>
-                </div>
-              </div>
-              <span className="text-[10px] text-blue-500 font-medium">Editable</span>
-            </div>
-          </div>
-
-          {/* Permissions / Scopes Checklist */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className={cn("text-[11px] font-semibold uppercase tracking-wider", isDarkBranded ? "text-slate-400" : "text-slate-500")}>
-                Requested Permissions & Scopes
-              </span>
-              <span className="text-[10px] text-emerald-500 font-mono font-bold">Standard Partner Tier</span>
-            </div>
-
-            <div className="space-y-2">
-              {config.permissionsDescription.map((desc, idx) => (
-                <div
-                  key={idx}
-                  className={cn(
-                    "p-2.5 rounded-xl border text-xs flex items-start gap-2.5 transition-colors",
-                    isDarkBranded ? "bg-white/5 border-white/5" : "bg-slate-50/80 border-slate-100"
-                  )}
-                >
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span className={cn("leading-relaxed", isDarkBranded ? "text-slate-200" : "text-slate-700")}>
-                    {desc}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Security & Isolation Disclaimer */}
-          <div
-            className={cn(
-              "p-3 rounded-xl text-[11px] leading-relaxed flex items-start gap-2",
-              isDarkBranded ? "bg-white/5 text-slate-400" : "bg-slate-100 text-slate-600"
-            )}
-          >
-            <Info className="w-4 h-4 shrink-0 text-blue-500 mt-0.5" />
-            <span>
-              By clicking <strong>Authorize app</strong>, you allow Omnisocial to manage posts and analytics in accordance with {config.name}&apos;s Developer Policy. You can revoke access at any time in your account settings.
-            </span>
-          </div>
-
-          {/* CTA Actions */}
-          <div className="pt-2 flex items-center gap-3">
-            <button
-              onClick={handleCancel}
-              disabled={isAuthorizing}
-              className={cn(
-                "tap-press min-h-[44px] flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all text-center",
-                isDarkBranded
-                  ? "bg-white/5 hover:bg-white/10 text-slate-300 border-white/10"
-                  : "bg-white hover:bg-slate-50 text-slate-700 border-slate-300"
-              )}
-            >
-              Cancel
-            </button>
-
-            <button
-              onClick={handleAuthorize}
-              disabled={isAuthorizing}
-              style={{
-                backgroundColor: isDarkBranded ? "#FFFFFF" : config.brandColor,
-                color: isDarkBranded ? "#000000" : "#FFFFFF",
-              }}
-              className="tap-press min-h-[44px] flex-[1.6] py-2.5 rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 hover:opacity-95 disabled:opacity-50"
-            >
-              {isAuthorizing ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span>Authorizing...</span>
-                </>
-              ) : (
-                <>
-                  <span>Authorize app</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </>
-              )}
-            </button>
-          </div>
+        <div>
+          <h2 className="text-xl font-bold text-white tracking-tight">
+            Authentic {config.name} Linking
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">
+            OmniSocial uses Ayrshare&apos;s enterprise social gateway for live OAuth 2.0 handshakes without mock data.
+          </p>
         </div>
 
-        {/* Footer info */}
-        <div
-          className={cn(
-            "p-3.5 text-center text-[10px] border-t flex items-center justify-center gap-2",
-            isDarkBranded ? "border-white/10 text-slate-500" : "border-slate-100 text-slate-400"
-          )}
-        >
-          <span>Redirect URI: /auth/callback</span>
-          <span>·</span>
-          <a
-            href={config.docUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline flex items-center gap-0.5 text-blue-500"
-          >
-            OAuth 2.0 Docs <ExternalLink className="w-2.5 h-2.5" />
-          </a>
+        {isLoading ? (
+          <div className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+            <RefreshCw className="w-6 h-6 text-blue-400 animate-spin mx-auto" />
+            <div className="text-xs font-semibold text-slate-200">
+              Initializing Secure OAuth Gateway...
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Connecting to Ayrshare SSO session for {config.name}.
+            </p>
+          </div>
+        ) : error ? (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-left space-y-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-xs text-amber-200">
+                  Ayrshare API Key Needed
+                </div>
+                <p className="text-[11px] text-amber-300/80 mt-1 leading-relaxed">
+                  {error}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                onClick={() => router.push("/?tab=social_accounts")}
+                className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+              >
+                <span>Go to Social Accounts Settings</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <a
+                href="https://www.ayrshare.com"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span>Get Free Ayrshare API Key</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500 font-mono">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>TLS 1.3 · Official Ayrshare API Gateway</span>
         </div>
       </div>
     </div>
@@ -296,8 +137,8 @@ export default function OAuthProviderPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white text-xs">
+          Loading OAuth Gateway...
         </div>
       }
     >
